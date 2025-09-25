@@ -1,0 +1,76 @@
+#!/usr/bin/with-contenv bashio
+# shellcheck shell=bash
+set -e
+
+# Get configuration
+RECORDINGS_LOCATION=$(bashio::config 'recordings_location')
+CUSTOM_PATH=$(bashio::config 'custom_recordings_path')
+PUID=$(bashio::config 'PUID')
+PGID=$(bashio::config 'PGID')
+
+bashio::log.info "Setting up Dispatcharr recordings symlink..."
+
+# Determine target directory
+if bashio::config.has_value 'custom_recordings_path' && [ -n "$CUSTOM_PATH" ]; then
+    TARGET_DIR="$CUSTOM_PATH"
+    bashio::log.info "Using custom recordings path: ${TARGET_DIR}"
+else
+    case "$RECORDINGS_LOCATION" in
+        "share")
+            TARGET_DIR="/share/dispatcharr"
+            ;;
+        "media")
+            TARGET_DIR="/media/dispatcharr"
+            ;;
+        "config")
+            TARGET_DIR="/config/dispatcharr"
+            ;;
+        *)
+            TARGET_DIR="/media/dispatcharr"
+            bashio::log.warning "Unknown location, defaulting to /media/dispatcharr"
+            ;;
+    esac
+    bashio::log.info "Using ${RECORDINGS_LOCATION} recordings path: ${TARGET_DIR}"
+fi
+
+# Create target directory with proper permissions
+mkdir -p "$TARGET_DIR"
+chown ${PUID}:${PGID} "$TARGET_DIR"
+bashio::log.info "Created recordings directory: ${TARGET_DIR}"
+
+# Handle existing recordings directory
+if [ -d "/data/recordings" ] && [ ! -L "/data/recordings" ]; then
+    bashio::log.info "Found existing recordings directory, migrating..."
+    
+    # Count and move files
+    FILE_COUNT=$(find /data/recordings -type f 2>/dev/null | wc -l)
+    if [ "$FILE_COUNT" -gt 0 ]; then
+        bashio::log.info "Moving ${FILE_COUNT} existing recordings..."
+        mv /data/recordings/* "$TARGET_DIR/" 2>/dev/null || true
+        chown -R ${PUID}:${PGID} "$TARGET_DIR"
+        bashio::log.info "Migration completed"
+    fi
+    
+    rm -rf /data/recordings
+fi
+
+# Create symlink
+ln -sf "$TARGET_DIR" /data/recordings
+bashio::log.info "Created symlink: /data/recordings -> ${TARGET_DIR}"
+
+# Verify and log
+if [ -L "/data/recordings" ]; then
+    bashio::log.info "✅ Symlink setup successful"
+    bashio::log.info "Recordings accessible to other Home Assistant add-ons at: ${TARGET_DIR}"
+else
+    bashio::log.error "❌ Symlink setup failed"
+fi
+
+# Install additional packages if specified
+if bashio::config.has_value 'additional_packages'; then
+    bashio::log.info "Installing additional packages..."
+    for package in $(bashio::config 'additional_packages'); do
+        bashio::log.info "Installing: ${package}"
+        apk add --no-cache "${package}" || bashio::log.warning "Failed to install ${package}"
+    done
+fi
