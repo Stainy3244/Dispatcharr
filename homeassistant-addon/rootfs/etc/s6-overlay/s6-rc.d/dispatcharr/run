@@ -1,0 +1,20 @@
+#!/usr/bin/with-contenv bashio
+# shellcheck shell=bash
+set -e
+
+bashio::log.info "Starting Dispatcharr..."
+
+# Set user and group IDs
+export PUID=$(bashio::config 'PUID')
+export PGID=$(bashio::config 'PGID')
+
+# Set timezone if specified
+if bashio::config.has_value 'TZ'; then
+    export TZ=$(bashio::config 'TZ')
+fi
+
+# Change to app directory
+cd /app
+
+# Start Dispatcharr with proper user
+exec s6-setuidgid ${PUID}:${PGID} /app/dispatcharr
