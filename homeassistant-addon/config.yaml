@@ -38,4 +38,5 @@ schema:
   additional_packages:
     - str?
   log_level: list(trace|debug|info|warn|error|fatal)?
-image: "ghcr.io/{arch}-addon-dispatcharr"
+image: "image: "ghcr.io/Stainy3244/dispatcharr-{arch}"
+"
