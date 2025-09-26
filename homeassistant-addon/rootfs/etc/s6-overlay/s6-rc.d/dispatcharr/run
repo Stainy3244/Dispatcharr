@@ -4,17 +4,32 @@ set -e
 
 bashio::log.info "Starting Dispatcharr..."
 
-# Set user and group IDs
-export PUID=$(bashio::config 'PUID')
-export PGID=$(bashio::config 'PGID')
+# Get user and group IDs from config
+PUID=$(bashio::config 'PUID')
+PGID=$(bashio::config 'PGID')
 
 # Set timezone if specified
 if bashio::config.has_value 'TZ'; then
     export TZ=$(bashio::config 'TZ')
+    bashio::log.info "Timezone set to: ${TZ}"
 fi
 
-# Change to app directory
+# Set log level
+LOG_LEVEL=$(bashio::config 'log_level')
+export LOG_LEVEL="$LOG_LEVEL"
+bashio::log.info "Log level set to: ${LOG_LEVEL}"
+
+# Ensure the binary is executable and owned by the correct user
+chown ${PUID}:${PGID} /app/dispatcharr
+chmod +x /app/dispatcharr
+
+# Ensure data directory has correct permissions
+chown -R ${PUID}:${PGID} /data
+
+bashio::log.info "Starting Dispatcharr as user ${PUID}:${PGID}..."
+
+# Change to app directory and start Dispatcharr
 cd /app
 
-# Start Dispatcharr with proper user
-exec s6-setuidgid ${PUID}:${PGID} /app/dispatcharr
+# Start Dispatcharr with proper user permissions
+exec s6-setuidgid ${PUID}:${PGID} ./dispatcharr
