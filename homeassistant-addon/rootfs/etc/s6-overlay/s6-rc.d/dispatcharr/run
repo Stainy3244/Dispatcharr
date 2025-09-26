@@ -8,6 +8,8 @@ bashio::log.info "Starting Dispatcharr..."
 PUID=$(bashio::config 'PUID')
 PGID=$(bashio::config 'PGID')
 
+bashio::log.info "Running as PUID=${PUID}, PGID=${PGID}"
+
 # Set timezone if specified
 if bashio::config.has_value 'TZ'; then
     export TZ=$(bashio::config 'TZ')
@@ -19,17 +21,30 @@ LOG_LEVEL=$(bashio::config 'log_level')
 export LOG_LEVEL="$LOG_LEVEL"
 bashio::log.info "Log level set to: ${LOG_LEVEL}"
 
+# Debug: Check current binary permissions
+bashio::log.info "Current binary permissions: $(ls -la /app/dispatcharr)"
+
 # Ensure the binary is executable and owned by the correct user
+bashio::log.info "Setting ownership and permissions..."
 chown ${PUID}:${PGID} /app/dispatcharr
-chmod +x /app/dispatcharr
+chmod 755 /app/dispatcharr
+
+# Verify permissions were set
+bashio::log.info "Updated binary permissions: $(ls -la /app/dispatcharr)"
 
 # Ensure data directory has correct permissions
 chown -R ${PUID}:${PGID} /data
 
 bashio::log.info "Starting Dispatcharr as user ${PUID}:${PGID}..."
 
-# Change to app directory and start Dispatcharr
+# Change to app directory
 cd /app
+
+# Try to run the binary directly first to test permissions
+if ! s6-test -x /app/dispatcharr; then
+    bashio::log.error "Binary is not executable!"
+    exit 1
+fi
 
 # Start Dispatcharr with proper user permissions
 exec s6-setuidgid ${PUID}:${PGID} ./dispatcharr
