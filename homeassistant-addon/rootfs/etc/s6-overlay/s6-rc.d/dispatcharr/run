@@ -1,4 +1,51 @@
 #!/usr/bin/with-contenv bashio
-bashio::log.info "RUN SCRIPT IS EXECUTING - THIS IS A TEST"
-sleep 10
-bashio::log.info "TEST COMPLETE"
+# shellcheck shell=bash
+set -e
+
+bashio::log.info "Starting Dispatcharr debug..."
+
+# Get configuration
+PUID=$(bashio::config 'PUID')
+PGID=$(bashio::config 'PGID')
+
+bashio::log.info "Target user: ${PUID}:${PGID}"
+
+# Debug the binary
+bashio::log.info "Binary info:"
+bashio::log.info "  File: $(file /app/dispatcharr)"
+bashio::log.info "  Size: $(stat -c%s /app/dispatcharr) bytes"
+bashio::log.info "  Permissions: $(ls -la /app/dispatcharr)"
+
+# Check if we're on the right architecture
+bashio::log.info "System architecture: $(uname -m)"
+
+# Set permissions
+chmod 755 /app/dispatcharr
+chown ${PUID}:${PGID} /app/dispatcharr
+
+bashio::log.info "After permission change: $(ls -la /app/dispatcharr)"
+
+# Test execution as root first
+bashio::log.info "Testing execution as root..."
+cd /app
+if ./dispatcharr --version 2>&1 | head -3; then
+    bashio::log.info "✅ Binary executes as root"
+else
+    bashio::log.error "❌ Binary cannot execute as root"
+    bashio::log.info "Checking dependencies with ldd:"
+    ldd ./dispatcharr 2>&1 | head -10 || bashio::log.info "Not dynamically linked or ldd failed"
+    exit 1
+fi
+
+# Test with s6-setuidgid
+bashio::log.info "Testing with s6-setuidgid..."
+if s6-setuidgid ${PUID}:${PGID} ./dispatcharr --version 2>&1 | head -3; then
+    bashio::log.info "✅ Binary executes with s6-setuidgid"
+else
+    bashio::log.error "❌ Binary fails with s6-setuidgid"
+    bashio::log.info "Trying alternative: exec as root..."
+    exec ./dispatcharr
+fi
+
+bashio::log.info "Starting normally with s6-setuidgid..."
+exec s6-setuidgid ${PUID}:${PGID} ./dispatcharr
