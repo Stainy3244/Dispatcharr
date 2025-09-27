@@ -4,6 +4,27 @@ set -e
 
 bashio::log.info "Starting Dispatcharr..."
 
+# Debug: Check if binary exists and permissions
+bashio::log.info "Binary location check: $(ls -la /app/ || echo 'Directory not found')"
+bashio::log.info "Binary permissions: $(ls -la /app/dispatcharr || echo 'Binary not found')"
+
+# Check what type of file it is
+bashio::log.info "File type: $(file /app/dispatcharr || echo 'Could not determine file type')"
+
+# Test if we can execute as root first
+bashio::log.info "Testing binary execution as root..."
+chmod 755 /app/dispatcharr
+
+# Try a simple test - just run the binary briefly
+bashio::log.info "Attempting to run binary with --help..."
+if timeout 5 /app/dispatcharr --help >/dev/null 2>&1; then
+    bashio::log.info "Binary executed successfully as root"
+elif timeout 5 /app/dispatcharr --version >/dev/null 2>&1; then
+    bashio::log.info "Binary executed successfully as root (version check)"
+else
+    bashio::log.warning "Binary test failed, but continuing anyway..."
+fi
+
 # Get user and group IDs from config
 PUID=$(bashio::config 'PUID')
 PGID=$(bashio::config 'PGID')
@@ -21,30 +42,20 @@ LOG_LEVEL=$(bashio::config 'log_level')
 export LOG_LEVEL="$LOG_LEVEL"
 bashio::log.info "Log level set to: ${LOG_LEVEL}"
 
-# Debug: Check current binary permissions
-bashio::log.info "Current binary permissions: $(ls -la /app/dispatcharr)"
-
-# Ensure the binary is executable and owned by the correct user
-bashio::log.info "Setting ownership and permissions..."
-chown ${PUID}:${PGID} /app/dispatcharr
-chmod 755 /app/dispatcharr
-
-# Verify permissions were set
-bashio::log.info "Updated binary permissions: $(ls -la /app/dispatcharr)"
-
 # Ensure data directory has correct permissions
+mkdir -p /data
 chown -R ${PUID}:${PGID} /data
+
+# Set ownership of binary
+chown ${PUID}:${PGID} /app/dispatcharr
+
+bashio::log.info "Final binary permissions: $(ls -la /app/dispatcharr)"
 
 bashio::log.info "Starting Dispatcharr as user ${PUID}:${PGID}..."
 
 # Change to app directory
 cd /app
 
-# Try to run the binary directly first to test permissions
-if ! s6-test -x /app/dispatcharr; then
-    bashio::log.error "Binary is not executable!"
-    exit 1
-fi
-
 # Start Dispatcharr with proper user permissions
+bashio::log.info "Executing: s6-setuidgid ${PUID}:${PGID} ./dispatcharr"
 exec s6-setuidgid ${PUID}:${PGID} ./dispatcharr
